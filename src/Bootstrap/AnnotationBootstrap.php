@@ -69,7 +69,7 @@ class AnnotationBootstrap implements Bootstrap
         Annotation::parseAnnotations($generator);
 
         if ($isFirstWorker) {
-            $time = round(microtime(true) - $time, 2);
+            $time = round(microtime(true) - $time, 3);
             echo '[Process:' . self::$workerName . '] Scan annotations completed, time: ' . $time . 's' . PHP_EOL;
         }
     }

@@ -14,6 +14,7 @@ use Closure;
 use FilesystemIterator;
 use Generator;
 use LinFly\Annotation\Bootstrap\AnnotationBootstrap;
+use PhpToken;
 use SplFileInfo;
 
 abstract class AnnotationUtil
@@ -115,41 +116,43 @@ abstract class AnnotationUtil
     public static function getAllClassesInFile(string $file)
     {
         $classes = [];
-        $tokens = token_get_all(file_get_contents($file));
+        $tokens = PhpToken::tokenize(file_get_contents($file));
         $count = count($tokens);
-        // 兼容php7和php8
-        $tNamespace = version_compare(PHP_VERSION, '8.0.0', '>=') ? [T_NAME_QUALIFIED, T_STRING] : [T_STRING];
+        $tNamespaceTokens = [T_NAME_FULLY_QUALIFIED, T_NAME_QUALIFIED];
+        $tClassTokens = [T_CLASS, T_ENUM, T_INTERFACE, T_TRAIT];
 
         $namespace = '';
         for ($i = 2; $i < $count; $i++) {
             // 扫描到命名空间
-            if ($tokens[$i - 2][0] === T_NAMESPACE && $tokens[$i - 1][0] === T_WHITESPACE) {
-                // 清空命名空间
+            if ($tokens[$i]->is(T_NAMESPACE)) {
                 $namespace = '';
-                // 不是命名空间跳过
-                if (!in_array($tokens[$i][0], $tNamespace)) {
+                $tempNamespace = '';
+
+                // 跳过空白和分号
+                while (++$i < $count && $tokens[$i]->is([T_WHITESPACE, '{', ';'])) {
                     continue;
                 }
-                // 获取命名空间
-                $tempNamespace = $tokens[$i][1] ?? '';
-                for ($j = $i + 1; $j < $count; $j++) {
-                    // 如果是分号或者大括号，说明命名空间结束
-                    if ($tokens[$j] === '{' || $tokens[$j] === ';') {
-                        break;
-                    }
-                    if ($tokens[$j][0] === $tNamespace) {
-                        // 命名空间拼接
-                        $tempNamespace .= '\\' . $tokens[$j][1];
-                    }
+
+                if ($tokens[$i]->is($tNamespaceTokens)) {
+                    $tempNamespace .= ($tempNamespace !== '' ? '\\' : '') . $tokens[$i]->text;
                 }
+
                 $namespace = $tempNamespace;
-                // 扫描到类
-            } else if (($tokens[$i - 2][0] === T_CLASS || $tokens[$i - 2][0] === T_ENUM) && $tokens[$i - 1][0] === T_WHITESPACE && $tokens[$i][0] === T_STRING) {
-                // 拼接命名空间和类名
-                $classes[] = ($namespace ? $namespace . '\\' : '') . $tokens[$i][1];
+            }
+
+            // 扫描到类、接口、枚举或特性
+            if ($tokens[$i]->is($tClassTokens)) {
+                // 跳过空白和注释
+                while (++$i < $count && $tokens[$i]->is([T_WHITESPACE, T_COMMENT, T_DOC_COMMENT])) {
+                    continue;
+                }
+
+                if ($tokens[$i]->is(T_STRING)) {
+                    $className = $tokens[$i]->text;
+                    $classes[] = ($namespace ? $namespace . '\\' : '') . $className;
+                }
             }
         }
-
         return $classes;
     }
 }
